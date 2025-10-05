@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ISS Weightless Simulator v5</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #f0f0f0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Title Text Style - Bigger and Bolder */
+        #main-title {
+            position: absolute;
+            top: 6vmin;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 5vmin; /* Increased size */
+            font-weight: 700;    /* Made bold */
+            letter-spacing: 3px;
+            color: rgba(255, 255, 255, 0.85);
+            text-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
+            z-index: 200;
+            pointer-events: none;
+        }
+
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: -1;
+            background-image: url('https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Milky_Way_galaxy.jpg/1920px-Milky_Way_galaxy.jpg');
+            background-size: cover;
+            background-position: center center;
+            opacity: 0.3;
+        }
+
+        .stars-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 200%;
+            height: 200%;
+            background-repeat: repeat;
+            animation-name: moveStars;
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
+        }
+
+        #stars1 {
+            background-image: radial-gradient(white, rgba(255,255,255,.2) 1px, transparent 20px);
+            background-size: 50px 50px;
+            animation-duration: 100s;
+        }
+
+        #stars2 {
+            background-image: radial-gradient(white, rgba(255,255,255,.15) 1px, transparent 15px);
+            background-size: 30px 30px;
+            animation-duration: 150s;
+        }
+
+        #stars3 {
+            background-image: radial-gradient(rgba(255,255,255,.4), rgba(255,255,255,.1) 1px, transparent 10px);
+            background-size: 20px 20px;
+            animation-duration: 200s;
+        }
+
+        @keyframes moveStars {
+            from { transform: translate(0, 0); }
+            to { transform: translate(-100%, -100%); }
+        }
+
+        .simulation-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #cupola-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            background: radial-gradient(circle at center, 
+                transparent 44vmin, 
+                rgba(0,0,0,0.8) 44.1vmin, 
+                rgba(0,0,0,0.95) 48vmin
+            );
+        }
+        #cupola-overlay::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 88vmin;
+            height: 88vmin;
+            border-radius: 50%;
+            border: 1.5vmin solid #555;
+            box-shadow: 
+                inset 0 0 2vmin #222, 
+                0 0 2vmin #000;
+        }
+
+        .floating-object {
+            position: absolute;
+            font-size: 3.5rem;
+            will-change: transform;
+            transform-origin: center center;
+            transition: filter 0.2s ease, transform 0.1s ease;
+        }
+
+        .floating-object.grabbing {
+            cursor: grabbing;
+            filter: drop-shadow(0 0 15px #00ffff);
+            transform: scale(1.1);
+            z-index: 50;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="main-title">Weightlessness in space</h1>
+
+    <div class="background-container">
+        <div class="stars-layer" id="stars1"></div>
+        <div class="stars-layer" id="stars2"></div>
+        <div class="stars-layer" id="stars3"></div>
+    </div>
+    <div class="simulation-container" id="simContainer">
+        </div>
+    <div id="cupola-overlay"></div>
+
+    <script>
+        const simContainer = document.getElementById('simContainer');
+        const EMOJI_LIST = [
+            { emoji: '🧑‍🚀', mass: 5, radius: 40 },
+            { emoji: '🛰️', mass: 8, radius: 45 },
+            { emoji: '🌎', mass: 25, radius: 60 },
+            { emoji: '🔧', mass: 2, radius: 30 },
+            { emoji: '🔩', mass: 1, radius: 20 },
+            { emoji: '⭐', mass: 3, radius: 35 },
+            { emoji: '☄️', mass: 7, radius: 40 },
+            { emoji: '🛸', mass: 10, radius: 50 }
+        ];
+        const OBJECT_COUNT = 12;
+
+        let objectStates = [];
+        let draggedObject = null;
+        let lastPointerPos = { x: 0, y: 0 };
+        let pointerVelocity = { x: 0, y: 0 };
+
+        function createObjects() {
+            const containerRect = simContainer.getBoundingClientRect();
+            for (let i = 0; i < OBJECT_COUNT; i++) {
+                const template = EMOJI_LIST[i % EMOJI_LIST.length];
+                const el = document.createElement('div');
+                el.classList.add('floating-object');
+                el.textContent = template.emoji;
+                el.style.fontSize = `${template.radius * 1.5}px`;
+                simContainer.appendChild(el);
+
+                objectStates.push({
+                    el: el,
+                    x: Math.random() * (containerRect.width - template.radius * 2) + template.radius,
+                    y: Math.random() * (containerRect.height - template.radius * 2) + template.radius,
+                    dx: (Math.random() - 0.5) * 1.5, dy: (Math.random() - 0.5) * 1.5,
+                    mass: template.mass, radius: template.radius, isDragging: false
+                });
+            }
+        }
+
+        function physicsLoop() {
+            const containerRect = simContainer.getBoundingClientRect();
+            const wallDamping = -0.9;
+
+            objectStates.forEach(obj => {
+                if (!obj.isDragging) {
+                    obj.x += obj.dx; obj.y += obj.dy;
+                    if (obj.x <= obj.radius || obj.x >= containerRect.width - obj.radius) {
+                        obj.dx *= wallDamping; obj.x = Math.max(obj.radius, Math.min(obj.x, containerRect.width - obj.radius));
+                    }
+                    if (obj.y <= obj.radius || obj.y >= containerRect.height - obj.radius) {
+                        obj.dy *= wallDamping; obj.y = Math.max(obj.radius, Math.min(obj.y, containerRect.height - obj.radius));
+                    }
+                }
+            });
+
+            for (let i = 0; i < objectStates.length; i++) {
+                for (let j = i + 1; j < objectStates.length; j++) {
+                    const obj1 = objectStates[i]; const obj2 = objectStates[j];
+                    const dist_x = obj2.x - obj1.x; const dist_y = obj2.y - obj1.y;
+                    const distance = Math.sqrt(dist_x * dist_x + dist_y * dist_y);
+                    if (distance < obj1.radius + obj2.radius) { resolveCollision(obj1, obj2); }
+                }
+            }
+
+            objectStates.forEach(obj => {
+                obj.el.style.transform = `translate(${obj.x - obj.radius}px, ${obj.y - obj.radius}px)`;
+            });
+
+            requestAnimationFrame(physicsLoop);
+        }
+        
+        function resolveCollision(obj1, obj2) {
+            const xVelocityDiff = obj1.dx - obj2.dx; const yVelocityDiff = obj1.dy - obj2.dy;
+            const xDist = obj2.x - obj1.x; const yDist = obj2.y - obj1.y;
+            if (xVelocityDiff * xDist + yVelocityDiff * yDist >= 0) {
+                const angle = -Math.atan2(yDist, xDist);
+                const m1 = obj1.mass; const m2 = obj2.mass;
+                const u1 = rotate({ x: obj1.dx, y: obj1.dy }, angle);
+                const u2 = rotate({ x: obj2.dx, y: obj2.dy }, angle);
+                const v1 = { x: u1.x * (m1 - m2) / (m1 + m2) + u2.x * 2 * m2 / (m1 + m2), y: u1.y };
+                const v2 = { x: u2.x * (m2 - m1) / (m1 + m2) + u1.x * 2 * m1 / (m1 + m2), y: u2.y };
+                const finalV1 = rotate(v1, -angle); const finalV2 = rotate(v2, -angle);
+                obj1.dx = finalV1.x; obj1.dy = finalV1.y;
+                obj2.dx = finalV2.x; obj2.dy = finalV2.y;
+            }
+        }
+
+        function rotate(velocity, angle) {
+            return {
+                x: velocity.x * Math.cos(angle) - velocity.y * Math.sin(angle),
+                y: velocity.x * Math.sin(angle) + velocity.y * Math.cos(angle)
+            };
+        }
+
+        function onPointerDown(x, y) {
+            for (let i = objectStates.length - 1; i >= 0; i--) {
+                const obj = objectStates[i];
+                const dist_x = x - obj.x; const dist_y = y - obj.y;
+                if (Math.sqrt(dist_x * dist_x + dist_y * dist_y) < obj.radius) {
+                    draggedObject = obj;
+                    obj.isDragging = true;
+                    obj.el.classList.add('grabbing');
+                    simContainer.style.cursor = 'grabbing';
+                    lastPointerPos = { x: x, y: y };
+                    break;
+                }
+            }
+        }
+
+        function onPointerMove(x, y) {
+            if (draggedObject) {
+                pointerVelocity.x = (x - lastPointerPos.x) * 0.5;
+                pointerVelocity.y = (y - lastPointerPos.y) * 0.5;
+                lastPointerPos = { x: x, y: y };
+                draggedObject.x = x;
+                draggedObject.y = y;
+            }
+        }
+
+        function onPointerUp() {
+            if (draggedObject) {
+                draggedObject.isDragging = false;
+                draggedObject.el.classList.remove('grabbing');
+                simContainer.style.cursor = 'grab';
+                draggedObject.dx = pointerVelocity.x;
+                draggedObject.dy = pointerVelocity.y;
+                draggedObject = null;
+                pointerVelocity = { x: 0, y: 0 };
+            }
+        }
+
+        // Mouse Events
+        simContainer.addEventListener('mousedown', (e) => onPointerDown(e.clientX, e.clientY));
+        simContainer.addEventListener('mousemove', (e) => onPointerMove(e.clientX, e.clientY));
+        simContainer.addEventListener('mouseup', onPointerUp);
+        simContainer.addEventListener('mouseleave', onPointerUp);
+
+        // Touch Events
+        simContainer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            onPointerDown(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        simContainer.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            onPointerMove(touch.clientX, touch.clientY);
+        }, { passive: false });
+        
+        simContainer.addEventListener('touchend', onPointerUp);
+        simContainer.addEventListener('touchcancel', onPointerUp);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            createObjects();
+            physicsLoop();
+        });
+    </script>
+</body>
+</html>
